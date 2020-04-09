@@ -2,21 +2,22 @@
 
 (require racket/contract)
 (provide
- (contract-out [make-xexpr-proc (-> symbol? procedure?)]
+ (contract-out [make-xexpr-proc (->* (symbol?) (#:always-show-attrs? boolean?) procedure?)]
                [kwargs->attributes (-> (listof keyword?) list? list?)]
                [apply-xexpr-element (->* (list?)
-                                         (namespace? (-> procedure?) #:recurse? any/c)
+                                         ((-> symbol? procedure?)
+                                          #:recurse? any/c)
                                          any/c)]))
 
 (define (kwargs->attributes kws args)
   (map (λ (k v) (list (string->symbol (keyword->string k)) v)) kws args))
 
-(define (make-xexpr-proc tag-name)
+(define (make-xexpr-proc tag-name #:always-show-attrs? [asa #f])
   (make-keyword-procedure
    (λ (kws args . formals)
      (apply list
             tag-name
-            (if (eq? kws '())
+            (if (and (null? kws) (not asa))
                 formals
                 (cons (kwargs->attributes kws args) formals))))))
 
@@ -34,8 +35,7 @@
 
 (define (apply-xexpr-element x
                              #:recurse? [recurse? #t]
-                             [ns (current-namespace)]
-                             [fail-thunk (λ () (make-xexpr-proc (car x)))])
+                             [lookup make-xexpr-proc])
   (define maybe-attrs (fail-to-null (cadr x)))
 
   (define-values (kw-list kw-val-list formals)
@@ -48,17 +48,12 @@
     (if recurse?
         (map (λ (el)
                (if (and (list? el) (not (null? el)))
-                   (apply-xexpr-element el ns fail-thunk #:recurse? #t)
+                   (apply-xexpr-element el lookup #:recurse? #t)
                    el))
              formals)
         formals))
 
-  (parameterize ([current-namespace ns])
-    (keyword-apply
-     (namespace-variable-value (car x) #t fail-thunk ns)
-     kw-list
-     kw-val-list
-     children)))
+  (keyword-apply (lookup (car x)) kw-list kw-val-list children))
 
 (module+ test
   (require rackunit)
@@ -74,15 +69,11 @@
                  (apply-xexpr-element '(p ((id "a")) "foo"))
                  '(p ((id "a")) "foo"))
     (test-case "Can recurse to children"
-      (define ns (make-base-namespace))
-      (namespace-set-variable-value!
-       'e
+      (define (proc . _)
        (make-keyword-procedure
         (λ (kws args . children)
           (unless (null? children)
             (check-equal? (car (car children)) 'p))
-          `(p ,(kwargs->attributes kws args))))
-       #t
-       ns)
-      (check-equal? (apply-xexpr-element '(e (e)) ns)
+          `(p ,(kwargs->attributes kws args)))))
+      (check-equal? (apply-xexpr-element '(e (e)) proc)
                     '(p ())))))
