@@ -54,7 +54,7 @@ treatment applies to all descendent elements.
 return an X-expression equivalent to @racket[E], except attributes
 will match the @racket[keyword<?] ordering imposed by an internal use
 of @racket[keyword-apply], and empty attribute lists will be removed
-from the output. To adjust this behavior, bind @racket[lookup] to a
+from the output. To adjust the latter behavior, bind @racket[lookup] to a
 different use of @racket[make-xexpr-proc].
 }
 
